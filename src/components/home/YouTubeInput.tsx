@@ -12,6 +12,7 @@ export default function YouTubeInput() {
   const { status, statusMsg, error, generate, reset, guideMeta, streamedSteps, progress } = useGeneratePack();
 
   const loading = status === "generating" || status === "streaming";
+  const autoFetchFailed = error?.includes("auto-fetch") || error?.includes("captions") || error?.includes("transcript");
 
   async function handleGenerate() {
     if (!url.trim()) return;
@@ -65,23 +66,30 @@ export default function YouTubeInput() {
           onClick={() => setShowTranscript(!showTranscript)}
           className="flex items-center gap-2 text-xs text-white/35 hover:text-white/60 transition-colors"
         >
-          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] transition-colors ${showTranscript ? "border-yellow-400/50 bg-yellow-400/10 text-yellow-400" : "border-white/20"}`}>
-            {showTranscript ? "✓" : ""}
+          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] transition-colors ${(showTranscript || autoFetchFailed) ? "border-yellow-400/50 bg-yellow-400/10 text-yellow-400" : "border-white/20"}`}>
+            {(showTranscript || autoFetchFailed) ? "✓" : ""}
           </span>
           Paste transcript manually (use if auto-fetch fails)
         </button>
 
-        {showTranscript && (
-          <textarea
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            placeholder="Paste the video transcript here..."
-            rows={7}
-            className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/25 outline-none resize-none transition-colors font-mono leading-relaxed"
-          />
+        {(showTranscript || autoFetchFailed) && (
+          <div className="space-y-2">
+            {autoFetchFailed && (
+              <p className="text-xs text-yellow-400/70 px-1">
+                Auto-fetch failed for this video. Open YouTube, click <strong>⋯ → Show transcript</strong>, copy all the text, and paste it below.
+              </p>
+            )}
+            <textarea
+              value={transcript}
+              onChange={(e) => { setTranscript(e.target.value); if (autoFetchFailed) reset(); }}
+              placeholder="Paste the video transcript here..."
+              rows={7}
+              className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/25 outline-none resize-none transition-colors font-mono leading-relaxed"
+            />
+          </div>
         )}
 
-        {error && (
+        {error && !autoFetchFailed && (
           <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 flex items-start gap-2">
             <span className="flex-shrink-0">⚠️</span> {error}
           </div>
