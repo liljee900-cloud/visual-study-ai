@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { savePack } from "@/lib/storage";
-import type { GenerateResponse, GenerateError } from "@/lib/types/api";
+import type { BuildGuide } from "@/lib/types/buildGuide";
 
 // ── Processing pipeline stages ──────────────────────────────────────────────
 
@@ -92,6 +92,7 @@ export default function VideoUpload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [tempVideoId, setTempVideoId] = useState<string | null>(null);
 
   const ext = file?.name.split(".").pop()?.toLowerCase() ?? "";
 
@@ -173,6 +174,7 @@ export default function VideoUpload() {
 
       transcript = data.transcript;
       if (!resolvedTitle) resolvedTitle = data.title;
+      if (data.tempVideoId) setTempVideoId(data.tempVideoId);
     } catch {
       setErrorMsg("Upload failed — check your connection and try again.");
       setStage("error");
@@ -187,7 +189,7 @@ export default function VideoUpload() {
     setStage("transcribing");
     await delay(1200);
 
-    // Stage 4 — Generating study pack
+    // Stage 4 — Generating study pack via SSE stream
     setStage("generating");
 
     try {
@@ -200,18 +202,78 @@ export default function VideoUpload() {
           videoTitle: resolvedTitle,
         }),
       });
-      const data: GenerateResponse | GenerateError = await res.json();
 
-      if (!data.success) {
-        setErrorMsg((data as GenerateError).error);
+      if (!res.ok || !res.body) {
+        setErrorMsg("Generation failed — server error.");
         setStage("error");
         return;
       }
 
-      const pack = (data as GenerateResponse).studyPack;
-      savePack(pack);
+      // Consume SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let guide: BuildGuide | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          try {
+            const event = JSON.parse(raw);
+            if (event.type === "error") {
+              setErrorMsg(event.error ?? "Generation failed.");
+              setStage("error");
+              return;
+            }
+            if (event.type === "complete" && event.studyPack) {
+              guide = event.studyPack as BuildGuide;
+            }
+          } catch { /* ignore malformed lines */ }
+        }
+      }
+
+      if (!guide) {
+        setErrorMsg("Guide generation returned no content. Please try again.");
+        setStage("error");
+        return;
+      }
+
+      // Trigger screenshot extraction in background if we have a temp video
+      if (tempVideoId && guide.steps?.length) {
+        fetch("/api/screenshots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tempVideoId,
+            steps: guide.steps.map(s => ({ id: s.id, number: s.number, totalSteps: guide!.steps.length })),
+          }),
+        })
+          .then(r => r.json())
+          .then((data: { screenshots?: Record<string, string> }) => {
+            if (data.screenshots && guide) {
+              // Merge screenshot URLs into guide steps
+              guide!.steps = guide!.steps.map(s => ({
+                ...s,
+                screenshotUrl: data.screenshots?.[s.id] ?? s.screenshotUrl,
+              }));
+              savePack(guide!);
+            }
+          })
+          .catch(() => {}); // non-fatal
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      savePack(guide as any);
       setStage("done");
-      router.push(`/study/${pack.id}`);
+      router.push(`/study/${guide.id}`);
     } catch {
       setErrorMsg("Generation failed — please try again.");
       setStage("error");
@@ -222,6 +284,7 @@ export default function VideoUpload() {
     setFile(null);
     setVideoTitle("");
     setStage("idle");
+    setTempVideoId(null);
     setErrorMsg("");
     setUploadProgress(0);
   }

@@ -1,7 +1,32 @@
-// Core data model — designed to be Book Builder-compatible in the future.
-// Each field maps to a visual component so the renderer stays data-driven.
+// Core data model — Book Builder-compatible, screenshot-ready architecture.
 
 export type Difficulty = "Beginner" | "Intermediate" | "Advanced" | "Expert";
+
+export type CalloutType = "tip" | "warning" | "important" | "best-practice" | "remember" | "result";
+
+export interface Callout {
+  type: CalloutType;
+  text: string;
+}
+
+export interface Diagram {
+  title: string;
+  nodes: string[];           // ordered node/step names for linear flow
+  description?: string;
+}
+
+export interface SettingHighlight {
+  name: string;
+  value: string;
+  note: string;
+  color?: "yellow" | "blue" | "green" | "red";
+}
+
+export interface BeforeAfter {
+  label: string;
+  before: { description: string; screenshotPlaceholder: string };
+  after:  { description: string; screenshotPlaceholder: string };
+}
 
 export interface Overview {
   videoTitle: string;
@@ -18,15 +43,18 @@ export interface Concept {
   id: string;
   number: number;
   name: string;
-  icon: string;            // emoji icon
+  icon: string;
+  color: "yellow" | "blue" | "green" | "red" | "purple";
   beginnerExplanation: string;
-  whatItDoes: string;
-  whyItMatters: string;
+  whyItExists: string;
+  whatHappens: string;
   whenToUse: string;
-  example: string;
-  commonMistakes: string[];
+  realWorldExample: string;
+  commonMistake: string;
   proTip: string;
-  screenshotPlaceholder?: string; // timestamp or description for future screenshot capture
+  screenshotPlaceholder: string;
+  callouts?: Callout[];
+  settings?: SettingHighlight[];
 }
 
 export interface TutorialStep {
@@ -38,7 +66,8 @@ export interface TutorialStep {
   expectedResult: string;
   mistakesToAvoid: string[];
   tips: string[];
-  timestamp?: string;
+  screenshotPlaceholder: string;
+  callout?: Callout;
 }
 
 export interface CheatSheet {
@@ -55,7 +84,7 @@ export interface QuizQuestion {
   id: string;
   type: "multiple-choice" | "true-false" | "fill-blank" | "short-answer";
   question: string;
-  options?: string[];        // for multiple-choice
+  options?: string[];
   answer: string;
   explanation: string;
 }
@@ -79,14 +108,14 @@ export interface StudyPack {
   overview: Overview;
   concepts: Concept[];
   steps: TutorialStep[];
+  diagram?: Diagram;
+  beforeAfter?: BeforeAfter[];
   cheatSheet: CheatSheet;
   quiz: Quiz;
-  // Metadata for future Book Builder
   tags: string[];
   version: "1.0";
 }
 
-// Lightweight index entry stored in localStorage
 export interface StudyPackMeta {
   id: string;
   createdAt: string;

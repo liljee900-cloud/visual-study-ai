@@ -1,0 +1,36 @@
+import type { BlenderCategoryDef } from "./types";
+
+export const BLENDER_CATEGORIES: BlenderCategoryDef[] = [
+  { id: "geometry-nodes",      name: "Geometry Nodes",       icon: "🔷", color: "blue",   description: "Procedural geometry with node-based workflows", topics: ["Instances","Points","Curves","Meshes","Fields","Attributes"] },
+  { id: "shader-nodes",        name: "Shader Nodes",         icon: "🎨", color: "purple", description: "Create materials and surface appearances", topics: ["BSDF","Textures","Color","Mix","Emission","Displacement"] },
+  { id: "compositor-nodes",    name: "Compositing",          icon: "🖥️", color: "green",  description: "Post-process renders in Blender's compositor", topics: ["Color Grading","Blur","Glare","Render Layers","Masking"] },
+  { id: "interface",           name: "Interface",            icon: "🖱️", color: "yellow", description: "Blender's UI panels, menus, and editors", topics: ["Header","Properties","Outliner","Toolbar","Sidebar","N-Panel"] },
+  { id: "navigation",          name: "Navigation",           icon: "🧭", color: "yellow", description: "Moving around in 3D space and editors", topics: ["Orbit","Pan","Zoom","Numpad","Walk Mode","Fly Mode"] },
+  { id: "viewport",            name: "Viewport",             icon: "👁️", color: "blue",   description: "The 3D viewport and its overlays and shading modes", topics: ["Solid","Material Preview","Rendered","Wireframe","Overlays","Gizmos"] },
+  { id: "object-mode",         name: "Object Mode",          icon: "📦", color: "orange", description: "Working with objects: transform, parent, organize", topics: ["Transform","Origin","Parent","Collections","Apply","Link"] },
+  { id: "edit-mode",           name: "Edit Mode",            icon: "✏️", color: "orange", description: "Editing mesh vertices, edges, and faces", topics: ["Select","Extrude","Loop Cut","Bevel","Inset","Merge","Knife"] },
+  { id: "sculpt-mode",         name: "Sculpt Mode",          icon: "🗿", color: "red",    description: "Organic sculpting with brushes", topics: ["Brushes","Dyntopo","Multires","Masking","Face Sets","Remesh"] },
+  { id: "uv-editing",          name: "UV Editing",           icon: "📐", color: "green",  description: "Unwrapping and editing UV maps", topics: ["Unwrap","Seams","Smart UV","Pack Islands","Stretch","Pinning"] },
+  { id: "shading",             name: "Shading",              icon: "💎", color: "purple", description: "Materials, shaders, and the Shader Editor", topics: ["Principled BSDF","Node Wrangler","PBR","Procedural Materials"] },
+  { id: "modifiers",           name: "Modifiers",            icon: "⚙️", color: "blue",   description: "Non-destructive modifiers stack", topics: ["Subdivision","Array","Mirror","Boolean","Solidify","Decimate","Bevel"] },
+  { id: "animation",           name: "Animation",            icon: "🎬", color: "yellow", description: "Keyframes, curves, dope sheet, and NLA editor", topics: ["Keyframes","Graph Editor","NLA","Actions","Drivers","Shape Keys"] },
+  { id: "rigging",             name: "Rigging",              icon: "🦴", color: "red",    description: "Armatures, bones, and character rigs", topics: ["Armatures","Bones","IK","FK","Weight Paint","Pose Mode"] },
+  { id: "constraints",         name: "Constraints",          icon: "🔗", color: "orange", description: "Object and bone constraints for automation", topics: ["Track To","Copy Location","IK","Limit","Follow Path","Child Of"] },
+  { id: "physics",             name: "Physics",              icon: "🌊", color: "blue",   description: "Simulation: cloth, fluid, rigid body, soft body", topics: ["Cloth","Fluid","Rigid Body","Soft Body","Force Fields","Bake"] },
+  { id: "particles",           name: "Particles",            icon: "✨", color: "yellow", description: "Particle systems for hair, effects, and instancing", topics: ["Emitter","Hair","Children","Forces","Render","Keyed Particles"] },
+  { id: "grease-pencil",       name: "Grease Pencil",        icon: "🖊️", color: "purple", description: "2D animation and illustration inside Blender", topics: ["Strokes","Layers","Materials","Modifiers","Effects","Draw Mode"] },
+  { id: "rendering",           name: "Rendering",            icon: "🖼️", color: "green",  description: "Output settings, render engines, and output formats", topics: ["Resolution","Samples","Output","Passes","Compositing","Denoise"] },
+  { id: "eevee",               name: "Eevee",                icon: "⚡", color: "blue",   description: "Real-time render engine", topics: ["Bloom","SSR","AO","Shadows","Volumetrics","Motion Blur"] },
+  { id: "cycles",              name: "Cycles",               icon: "🌀", color: "purple", description: "Path-tracing render engine", topics: ["Samples","Bounces","Denoising","GPU","Light Paths","Caustics"] },
+  { id: "lighting",            name: "Lighting",             icon: "💡", color: "yellow", description: "Lights, HDRI, and illumination techniques", topics: ["Point","Sun","Spot","Area","HDRI","IES","Light Linking"] },
+  { id: "cameras",             name: "Cameras",              icon: "📷", color: "green",  description: "Camera settings, depth of field, and animation", topics: ["Focal Length","DOF","Clipping","Passepartout","Camera Binding"] },
+  { id: "materials",           name: "Materials",            icon: "🎭", color: "purple", description: "PBR materials, slots, and material workflows", topics: ["Slots","Node Editor","Base Color","Roughness","Metallic","Normal"] },
+  { id: "texturing",           name: "Texturing",            icon: "🗺️", color: "orange", description: "Image textures, UV workflows, and texture painting", topics: ["Image Textures","Projection","Texture Paint","Masks","Layers"] },
+  { id: "procedural-workflows",name: "Procedural Workflows", icon: "🔄", color: "blue",   description: "Non-destructive, generative, and parameter-driven art", topics: ["Geometry Nodes","Drivers","Expressions","Modifiers","Fields"] },
+  { id: "asset-browser",       name: "Asset Browser",        icon: "🗂️", color: "yellow", description: "Managing and reusing assets across projects", topics: ["Asset Libraries","Mark Asset","Catalogs","Pose Library","Materials"] },
+  { id: "add-ons",             name: "Add-ons",              icon: "🔌", color: "green",  description: "Popular add-ons that extend Blender", topics: ["Node Wrangler","Loop Tools","Auto Mirror","CAD Sketcher","Rigify"] },
+  { id: "shortcuts",           name: "Shortcuts",            icon: "⌨️", color: "red",    description: "Essential keyboard shortcuts for every mode", topics: ["G R S","Tab","Ctrl+Z","Numpad","X Y Z axes","Pie Menus"] },
+  { id: "preferences",         name: "Preferences",          icon: "🛠️", color: "orange", description: "Customizing Blender to your workflow", topics: ["Themes","Keymap","Add-ons","System","File Paths","Interface"] },
+];
+
+export const CATEGORY_MAP = Object.fromEntries(BLENDER_CATEGORIES.map(c => [c.id, c]));

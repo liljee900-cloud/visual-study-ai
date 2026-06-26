@@ -1,33 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { writeFile } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 
-export const maxDuration = 300; // transcription can be slow
-
-// ---------------------------------------------------------------------------
-// POST /api/transcribe
-//
-// Accepts a multipart/form-data body with:
-//   - file   : video file (MP4 / MOV / MKV / WEBM)
-//   - title  : optional title string
-//
-// Pipeline (V1 — partially stubbed, ready for real implementation):
-//
-//   1. Receive & buffer the upload
-//   2. [TODO] Save to temp storage (local /tmp in dev, R2/Supabase in prod)
-//   3. [TODO] FFmpeg: extract audio track → WAV/MP3
-//   4. [TODO] Whisper API: transcribe audio → text
-//   5. Return { transcript, title, durationSeconds }
-//
-// To wire in real processing:
-//   - Install: npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg openai
-//   - Replace the TODO blocks below with the implementation stubs provided
-// ---------------------------------------------------------------------------
+export const maxDuration = 300;
 
 interface TranscribeSuccess {
   success: true;
   transcript: string;
   title: string;
   durationSeconds: number | null;
-  processingNote: string;
+  tempVideoId: string | null;   // set when video saved to /tmp for screenshot extraction
+  processingNote?: string;
 }
 
 interface TranscribeError {
@@ -57,100 +42,101 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const SUPPORTED = ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm", "video/avi", "video/mov"];
+  const SUPPORTED = ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm", "video/avi"];
   if (!SUPPORTED.includes(file.type) && !file.name.match(/\.(mp4|mov|mkv|webm|avi)$/i)) {
     return NextResponse.json<TranscribeError>(
-      {
-        success: false,
-        error: `Unsupported file type: ${file.type || file.name}. Please upload MP4, MOV, MKV, or WEBM.`,
-        stage: "upload",
-      },
+      { success: false, error: `Unsupported file type. Please upload MP4, MOV, MKV, or WEBM.`, stage: "upload" },
       { status: 415 }
     );
   }
 
-  const MAX_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
-  if (file.size > MAX_SIZE_BYTES) {
+  const MAX_BYTES = 500 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
     return NextResponse.json<TranscribeError>(
       { success: false, error: "File too large. Maximum size is 500 MB.", stage: "upload" },
       { status: 413 }
     );
   }
 
-  // ── STAGE 1: Buffer the upload ──────────────────────────────────────────
-  // In production: stream directly to R2 / Supabase Storage instead of
-  // buffering in memory. For files > ~100 MB use presigned upload URLs.
+  // ── Buffer upload ──────────────────────────────────────────────────────────
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-  void buffer; // used by FFmpeg below once wired in
 
-  // ── STAGE 2: Save to temp path ──────────────────────────────────────────
-  // TODO (production):
-  //
-  //   import { writeFile } from "fs/promises";
-  //   import { join } from "path";
-  //   import { tmpdir } from "os";
-  //   const tmpPath = join(tmpdir(), `vsa-${Date.now()}-${file.name}`);
-  //   await writeFile(tmpPath, buffer);
+  // ── Save to /tmp so the screenshot extractor can access it ─────────────────
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "mp4";
+  const tempVideoId = randomUUID();
+  const tempPath = join(tmpdir(), `vsa-${tempVideoId}.${ext}`);
+  let savedToTemp = false;
+  try {
+    await writeFile(tempPath, buffer);
+    savedToTemp = true;
+  } catch {
+    // Non-fatal — screenshots just won't be available
+  }
 
-  // ── STAGE 3: Extract audio with FFmpeg ─────────────────────────────────
-  // TODO (production):
-  //
-  //   import ffmpeg from "fluent-ffmpeg";
-  //   import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-  //   ffmpeg.setFfmpegPath(ffmpegPath.path);
-  //
-  //   const audioPath = tmpPath.replace(/\.[^.]+$/, ".mp3");
-  //   await new Promise<void>((resolve, reject) => {
-  //     ffmpeg(tmpPath)
-  //       .noVideo()
-  //       .audioCodec("libmp3lame")
-  //       .audioBitrate("128k")
-  //       .output(audioPath)
-  //       .on("end", resolve)
-  //       .on("error", reject)
-  //       .run();
-  //   });
+  // ── Whisper transcription ──────────────────────────────────────────────────
+  // Wired when OPENAI_API_KEY is set in .env.local
+  let transcript: string | null = null;
 
-  // ── STAGE 4: Transcribe with Whisper ───────────────────────────────────
-  // TODO (production):
-  //
-  //   import OpenAI from "openai";
-  //   import { createReadStream } from "fs";
-  //   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  //
-  //   const transcription = await openai.audio.transcriptions.create({
-  //     model: "whisper-1",
-  //     file: createReadStream(audioPath),
-  //     response_format: "text",
-  //   });
-  //   const transcript = transcription; // string
-  //
-  // Alternative: Anthropic audio input (when available), Deepgram, AssemblyAI
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const { default: OpenAI } = await import("openai");
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // ── V1 STUB ─────────────────────────────────────────────────────────────
-  // Return a clear stub response so the UI can complete its flow.
-  // The generate endpoint will receive this and the AI will still produce
-  // a study pack (albeit with limited content from the stub transcript).
-  //
-  // Replace this entire block once FFmpeg + Whisper are wired in above.
+      // For Whisper we need an audio file — use ffmpeg if available, else send video directly
+      let audioBuffer = buffer;
+      let audioFilename = file.name;
 
-  const stubTranscript = `[TRANSCRIPTION PENDING — Video file received: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)]
+      // Try ffmpeg audio extraction
+      try {
+        const ffmpegPath = (await import("@ffmpeg-installer/ffmpeg")).default;
+        const { default: ffmpeg } = await import("fluent-ffmpeg");
+        ffmpeg.setFfmpegPath(ffmpegPath.path);
 
-This is a placeholder transcript generated because the FFmpeg + Whisper transcription pipeline has not yet been connected.
+        const audioPath = join(tmpdir(), `vsa-${tempVideoId}.mp3`);
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(tempPath)
+            .noVideo()
+            .audioCodec("libmp3lame")
+            .audioBitrate("128k")
+            .output(audioPath)
+            .on("end", () => resolve())
+            .on("error", (err: Error) => reject(err))
+            .run();
+        });
+        const { readFile } = await import("fs/promises");
+        audioBuffer = await readFile(audioPath);
+        audioFilename = `audio-${tempVideoId}.mp3`;
+      } catch {
+        // ffmpeg unavailable — send raw video to Whisper (works for MP4)
+      }
 
-To enable real transcription:
-1. Install fluent-ffmpeg and @ffmpeg-installer/ffmpeg for audio extraction
-2. Add your OPENAI_API_KEY to .env.local
-3. Replace the stub block in /src/app/api/transcribe/route.ts with the TODO implementations above
+      const { toFile } = await import("openai");
+      const transcription = await openai.audio.transcriptions.create({
+        model: "whisper-1",
+        file: await toFile(audioBuffer, audioFilename),
+        response_format: "text",
+      });
+      transcript = transcription as unknown as string;
+    } catch (err) {
+      console.error("Whisper transcription failed:", err);
+    }
+  }
 
-Once connected, this file will be automatically transcribed and a full visual study pack will be generated.`;
+  if (!transcript) {
+    // Stub — real transcription unavailable
+    transcript = `[Video uploaded: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)]
+
+To enable automatic transcription, add OPENAI_API_KEY to .env.local.
+
+If you have a transcript, paste it in the "Paste Transcript" tab instead.`;
+  }
 
   return NextResponse.json<TranscribeSuccess>({
     success: true,
-    transcript: stubTranscript,
+    transcript,
     title: title || file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
     durationSeconds: null,
-    processingNote: "V1 stub — transcription pipeline not yet connected. See /src/app/api/transcribe/route.ts for wiring instructions.",
+    tempVideoId: savedToTemp ? tempVideoId : null,
   });
 }

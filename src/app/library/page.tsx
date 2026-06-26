@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { loadMetas, deletePack } from "@/lib/storage";
-import type { StudyPackMeta } from "@/lib/types/studyPack";
+import { loadMetas, deletePack, migrateMetas } from "@/lib/storage";
+import type { PackMeta } from "@/lib/storage";
 import Header from "@/components/layout/Header";
 import Badge from "@/components/ui/Badge";
 import { difficultyColor } from "@/lib/utils";
 
 export default function LibraryPage() {
-  const [metas, setMetas] = useState<StudyPackMeta[]>([]);
+  const [metas, setMetas] = useState<PackMeta[]>([]);
 
   useEffect(() => {
+    migrateMetas();
     const m = loadMetas();
     setMetas(Object.values(m).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }, []);
@@ -30,7 +31,7 @@ export default function LibraryPage() {
           <div>
             <h1 className="text-2xl font-black text-white">My Library</h1>
             <p className="text-sm text-white/40 mt-1">
-              {metas.length} study pack{metas.length !== 1 ? "s" : ""} saved locally
+              {metas.length} guide{metas.length !== 1 ? "s" : ""} saved locally
             </p>
           </div>
           <Link
@@ -89,7 +90,7 @@ export default function LibraryPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={meta.thumbnailUrl}
-                    alt={meta.videoTitle}
+                    alt={meta.title}
                     className="w-full aspect-video object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
@@ -97,18 +98,23 @@ export default function LibraryPage() {
                 <div className="p-4 space-y-3">
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant={difficultyColor(meta.difficulty)}>{meta.difficulty}</Badge>
-                    <Badge variant="blue">{meta.category}</Badge>
+                    {meta.stepCount != null && (
+                      <Badge variant="blue">{meta.stepCount} steps</Badge>
+                    )}
+                    {meta.version === "1.0" && (
+                      <Badge variant="default">v1.0</Badge>
+                    )}
                   </div>
                   <h3 className="font-bold text-white text-sm leading-snug line-clamp-2">
-                    {meta.videoTitle}
+                    {meta.title}
                   </h3>
-                  <p className="text-xs text-white/40">{meta.mainTopic}</p>
+                  {meta.subtitle && <p className="text-xs text-white/40 line-clamp-2">{meta.subtitle}</p>}
                   <div className="flex items-center gap-2 pt-1">
                     <Link
                       href={`/study/${meta.id}`}
                       className="flex-1 text-center text-sm font-semibold bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 py-2 rounded-xl transition-colors"
                     >
-                      Open Pack →
+                      Open Guide →
                     </Link>
                     <button
                       onClick={() => handleDelete(meta.id)}

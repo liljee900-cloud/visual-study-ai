@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useGeneratePack } from "@/lib/hooks/useGeneratePack";
+import GeneratingGuide from "./GeneratingGuide";
 
 export default function TranscriptInput() {
   const [transcript, setTranscript] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const { status, statusMsg, error, generate, reset } = useGeneratePack();
+  const { status, statusMsg, error, generate, reset, guideMeta, streamedSteps, progress } = useGeneratePack();
 
-  const loading = status === "generating";
+  const loading = status === "generating" || status === "streaming";
   const charCount = transcript.length;
   const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
   const isReady = transcript.trim().length >= 100;
@@ -24,6 +25,10 @@ export default function TranscriptInput() {
   }
 
   return (
+    <>
+    {loading && (
+      <GeneratingGuide meta={guideMeta} steps={streamedSteps} progress={progress} statusMsg={statusMsg} onCancel={reset} />
+    )}
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <input
@@ -85,9 +90,10 @@ export default function TranscriptInput() {
             {statusMsg}
           </span>
         ) : (
-          `✨ Generate Study Pack${isReady ? "" : " (paste transcript first)"}`
+          `✨ Generate Step-by-Step Guide${isReady ? "" : " (paste transcript first)"}`
         )}
       </button>
     </div>
+    </>
   );
 }

@@ -19,14 +19,14 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.1]">
-            Turn any video into
+            Turn any tutorial into
             <br />
-            <span className="text-yellow-400">visual study cards</span>
+            <span className="text-yellow-400">a step-by-step guide</span>
           </h1>
 
           <p className="text-base sm:text-lg text-white/45 max-w-xl leading-relaxed">
-            YouTube URL, raw transcript, or uploaded video file — paste or drop it in
-            and get beautiful concept cards, step notes, cheat sheets, and quizzes.
+            YouTube, video file, PDF, or any tutorial URL — get a complete instruction
+            manual with every step, exact setting, and shortcut. Close the video forever.
           </p>
 
           {/* 3-mode input panel */}
