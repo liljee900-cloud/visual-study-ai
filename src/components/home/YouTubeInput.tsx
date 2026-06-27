@@ -5,8 +5,9 @@ import { useGeneratePack } from "@/lib/hooks/useGeneratePack";
 import GeneratingGuide from "./GeneratingGuide";
 
 type TranscriptStatus = "idle" | "fetching" | "found" | "unavailable" | "error";
+type Mode = "youtube" | "upload" | "pdf" | "url" | "transcript" | "topic";
 
-export default function YouTubeInput() {
+export default function YouTubeInput({ onSwitchMode }: { onSwitchMode?: (m: Mode) => void }) {
   const [url, setUrl] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -110,26 +111,58 @@ export default function YouTubeInput() {
           </div>
         </div>
 
-        {/* Transcript status pill */}
-        {txStatus !== "idle" && (
-          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs border transition-all ${
-            txStatus === "fetching"     ? "border-white/10 bg-white/3 text-white/40" :
-            txStatus === "found"        ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" :
-            txStatus === "unavailable"  ? "border-amber-500/20 bg-amber-500/5 text-amber-400" :
-                                          "border-red-500/20 bg-red-500/5 text-red-400"
-          }`}>
-            {txStatus === "fetching" && (
-              <><span className="w-3 h-3 rounded-full border border-white/30 border-t-white/70 animate-spin flex-shrink-0" />Finding transcript…</>
-            )}
-            {txStatus === "found" && (
-              <><span className="flex-shrink-0">✓</span>Transcript found — ready to generate</>
-            )}
-            {txStatus === "unavailable" && (
-              <><span className="flex-shrink-0">⚠️</span>{txError}</>
-            )}
-            {txStatus === "error" && (
-              <><span className="flex-shrink-0">⚠️</span>{txError}</>
-            )}
+        {/* Transcript status */}
+        {txStatus === "fetching" && (
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs border border-white/10 bg-white/3 text-white/40">
+            <span className="w-3 h-3 rounded-full border border-white/30 border-t-white/70 animate-spin flex-shrink-0" />
+            Finding transcript…
+          </div>
+        )}
+        {txStatus === "found" && (
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs border border-emerald-500/20 bg-emerald-500/5 text-emerald-400">
+            <span className="flex-shrink-0">✓</span>Transcript found — ready to generate
+          </div>
+        )}
+        {txStatus === "error" && (
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs border border-red-500/20 bg-red-500/5 text-red-400">
+            <span className="flex-shrink-0">⚠️</span>{txError}
+          </div>
+        )}
+        {txStatus === "unavailable" && (
+          <div className="border border-amber-500/20 bg-amber-500/5 rounded-xl p-4 space-y-3">
+            <p className="text-xs text-amber-400 font-medium">
+              This video has no captions available.
+            </p>
+            <p className="text-xs text-white/40 leading-relaxed">
+              Choose an alternative:
+            </p>
+            <div className="flex flex-col gap-2">
+              {onSwitchMode && (
+                <button
+                  onClick={() => onSwitchMode("topic")}
+                  className="w-full text-left px-3 py-2.5 rounded-lg bg-white/4 hover:bg-white/7 border border-white/8 hover:border-yellow-400/25 transition-all"
+                >
+                  <p className="text-xs font-semibold text-white/80">✨ Generate from topic</p>
+                  <p className="text-[11px] text-white/35 mt-0.5">Describe what this video covers — the AI builds a guide from scratch</p>
+                </button>
+              )}
+              {onSwitchMode && (
+                <button
+                  onClick={() => onSwitchMode("upload")}
+                  className="w-full text-left px-3 py-2.5 rounded-lg bg-white/4 hover:bg-white/7 border border-white/8 hover:border-yellow-400/25 transition-all"
+                >
+                  <p className="text-xs font-semibold text-white/80">🎬 Upload the video file</p>
+                  <p className="text-[11px] text-white/35 mt-0.5">Download the video, then upload it here — audio is transcribed with Whisper</p>
+                </button>
+              )}
+              <button
+                onClick={() => setShowManual(true)}
+                className="w-full text-left px-3 py-2.5 rounded-lg bg-white/4 hover:bg-white/7 border border-white/8 hover:border-yellow-400/25 transition-all"
+              >
+                <p className="text-xs font-semibold text-white/80">📝 Paste transcript manually</p>
+                <p className="text-[11px] text-white/35 mt-0.5">On YouTube: click ⋯ → Show transcript, copy the text and paste below</p>
+              </button>
+            </div>
           </div>
         )}
 

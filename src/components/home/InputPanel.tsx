@@ -59,7 +59,7 @@ export default function InputPanel() {
 
       {/* Active panel */}
       <div key={mode}>
-        {mode === "youtube"    && <YouTubeInput />}
+        {mode === "youtube"    && <YouTubeInput onSwitchMode={setMode} />}
         {mode === "upload"     && <VideoUpload />}
         {mode === "pdf"        && <PdfInput />}
         {mode === "url"        && <URLInput />}
