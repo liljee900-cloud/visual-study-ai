@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { randomUUID } from "crypto";
 
 export const maxDuration = 300;
+
+// Vercel body limit ~4.5 MB on Hobby. Whisper accepts up to 25 MB.
+// We enforce 24 MB — users on Hobby Vercel must keep files under ~4 MB.
+// On Pro/Enterprise, the limit is configurable via vercel.json.
+const MAX_BYTES = 24 * 1024 * 1024;
 
 interface TranscribeSuccess {
   success: true;
   transcript: string;
   title: string;
-  durationSeconds: number | null;
-  tempVideoId: string | null;   // set when video saved to /tmp for screenshot extraction
-  processingNote?: string;
 }
 
 interface TranscribeError {
   success: false;
   error: string;
-  stage: "upload" | "audio-extract" | "transcribe" | "unknown";
+  stage: "upload" | "transcribe" | "unknown";
+  needsKey?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -42,101 +41,70 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const SUPPORTED = ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm", "video/avi"];
-  if (!SUPPORTED.includes(file.type) && !file.name.match(/\.(mp4|mov|mkv|webm|avi)$/i)) {
+  const SUPPORTED_EXT = /\.(mp4|mov|mkv|webm|avi|m4a|mp3|wav|ogg)$/i;
+  if (!SUPPORTED_EXT.test(file.name) && !file.type.startsWith("video/") && !file.type.startsWith("audio/")) {
     return NextResponse.json<TranscribeError>(
-      { success: false, error: `Unsupported file type. Please upload MP4, MOV, MKV, or WEBM.`, stage: "upload" },
+      { success: false, error: "Unsupported file type. Upload MP4, MOV, MKV, WEBM, or audio files.", stage: "upload" },
       { status: 415 }
     );
   }
 
-  const MAX_BYTES = 500 * 1024 * 1024;
   if (file.size > MAX_BYTES) {
     return NextResponse.json<TranscribeError>(
-      { success: false, error: "File too large. Maximum size is 500 MB.", stage: "upload" },
+      {
+        success: false,
+        error: `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 24 MB. For larger videos, export just the audio track first.`,
+        stage: "upload",
+      },
       { status: 413 }
     );
   }
 
-  // ── Buffer upload ──────────────────────────────────────────────────────────
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json<TranscribeError>(
+      {
+        success: false,
+        error: "OPENAI_API_KEY is not configured. Add it to your Vercel environment variables to enable video transcription.",
+        stage: "transcribe",
+        needsKey: true,
+      },
+      { status: 503 }
+    );
+  }
+
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
-  // ── Save to /tmp so the screenshot extractor can access it ─────────────────
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "mp4";
-  const tempVideoId = randomUUID();
-  const tempPath = join(tmpdir(), `vsa-${tempVideoId}.${ext}`);
-  let savedToTemp = false;
+  // Send directly to OpenAI Whisper — accepts MP4/MOV/WEBM natively, no FFmpeg needed on server
   try {
-    await writeFile(tempPath, buffer);
-    savedToTemp = true;
-  } catch {
-    // Non-fatal — screenshots just won't be available
-  }
+    const { default: OpenAI, toFile } = await import("openai");
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // ── Whisper transcription ──────────────────────────────────────────────────
-  // Wired when OPENAI_API_KEY is set in .env.local
-  let transcript: string | null = null;
+    const transcription = await openai.audio.transcriptions.create({
+      model: "whisper-1",
+      file: await toFile(buffer, file.name, { type: file.type || "video/mp4" }),
+      response_format: "text",
+    });
 
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const { default: OpenAI } = await import("openai");
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-      // For Whisper we need an audio file — use ffmpeg if available, else send video directly
-      let audioBuffer = buffer;
-      let audioFilename = file.name;
-
-      // Try ffmpeg audio extraction
-      try {
-        const ffmpegPath = (await import("@ffmpeg-installer/ffmpeg")).default;
-        const { default: ffmpeg } = await import("fluent-ffmpeg");
-        ffmpeg.setFfmpegPath(ffmpegPath.path);
-
-        const audioPath = join(tmpdir(), `vsa-${tempVideoId}.mp3`);
-        await new Promise<void>((resolve, reject) => {
-          ffmpeg(tempPath)
-            .noVideo()
-            .audioCodec("libmp3lame")
-            .audioBitrate("128k")
-            .output(audioPath)
-            .on("end", () => resolve())
-            .on("error", (err: Error) => reject(err))
-            .run();
-        });
-        const { readFile } = await import("fs/promises");
-        audioBuffer = await readFile(audioPath);
-        audioFilename = `audio-${tempVideoId}.mp3`;
-      } catch {
-        // ffmpeg unavailable — send raw video to Whisper (works for MP4)
-      }
-
-      const { toFile } = await import("openai");
-      const transcription = await openai.audio.transcriptions.create({
-        model: "whisper-1",
-        file: await toFile(audioBuffer, audioFilename),
-        response_format: "text",
-      });
-      transcript = transcription as unknown as string;
-    } catch (err) {
-      console.error("Whisper transcription failed:", err);
+    const transcript = (transcription as unknown as string).trim();
+    if (!transcript) {
+      return NextResponse.json<TranscribeError>(
+        { success: false, error: "No speech detected in this file.", stage: "transcribe" },
+        { status: 422 }
+      );
     }
+
+    return NextResponse.json<TranscribeSuccess>({
+      success: true,
+      transcript,
+      title: title || file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Whisper transcription error:", msg);
+    return NextResponse.json<TranscribeError>(
+      { success: false, error: "Transcription failed: " + msg, stage: "transcribe" },
+      { status: 500 }
+    );
   }
-
-  if (!transcript) {
-    // Stub — real transcription unavailable
-    transcript = `[Video uploaded: "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)]
-
-To enable automatic transcription, add OPENAI_API_KEY to .env.local.
-
-If you have a transcript, paste it in the "Paste Transcript" tab instead.`;
-  }
-
-  return NextResponse.json<TranscribeSuccess>({
-    success: true,
-    transcript,
-    title: title || file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
-    durationSeconds: null,
-    tempVideoId: savedToTemp ? tempVideoId : null,
-  });
 }

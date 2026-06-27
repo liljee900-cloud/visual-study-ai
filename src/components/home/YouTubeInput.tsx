@@ -1,27 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGeneratePack } from "@/lib/hooks/useGeneratePack";
 import GeneratingGuide from "./GeneratingGuide";
+
+type TranscriptStatus = "idle" | "fetching" | "found" | "unavailable" | "error";
 
 export default function YouTubeInput() {
   const [url, setUrl] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [showTranscript, setShowTranscript] = useState(false);
-  const { status, statusMsg, error, generate, reset, guideMeta, streamedSteps, progress } = useGeneratePack();
+  const [showManual, setShowManual] = useState(false);
+  const [txStatus, setTxStatus] = useState<TranscriptStatus>("idle");
+  const [txError, setTxError] = useState("");
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { status, statusMsg, error, generate, reset, guideMeta, streamedSteps, progress } = useGeneratePack();
   const loading = status === "generating" || status === "streaming";
-  const autoFetchFailed = error?.includes("auto-fetch") || error?.includes("captions") || error?.includes("transcript");
+
+  // Auto-fetch transcript 800 ms after the URL stops changing
+  useEffect(() => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    const trimmed = url.trim();
+    if (!trimmed || !trimmed.includes("youtube") && !trimmed.includes("youtu.be")) {
+      setTxStatus("idle");
+      setTranscript("");
+      return;
+    }
+    setTxStatus("fetching");
+    fetchTimerRef.current = setTimeout(() => fetchTranscript(trimmed), 800);
+    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+
+  async function fetchTranscript(videoUrl: string) {
+    try {
+      const res = await fetch("/api/transcript-youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTranscript(data.transcript);
+        setTxStatus("found");
+        setTxError("");
+      } else {
+        setTranscript("");
+        setTxStatus(data.unavailable ? "unavailable" : "error");
+        setTxError(data.error ?? "Could not fetch transcript.");
+        setShowManual(true);
+      }
+    } catch {
+      setTranscript("");
+      setTxStatus("error");
+      setTxError("Network error while fetching transcript.");
+      setShowManual(true);
+    }
+  }
 
   async function handleGenerate() {
     if (!url.trim()) return;
     await generate({ videoUrl: url, transcript, videoTitle, inputType: "tutorial" });
   }
 
+  function handleUrlChange(val: string) {
+    setUrl(val);
+    reset();
+    setShowManual(false);
+    setTxError("");
+  }
+
+  const canGenerate = url.trim() && (txStatus === "found" || showManual) && !loading;
+
   return (
     <>
-      {/* Live streaming overlay */}
       {loading && (
         <GeneratingGuide
           meta={guideMeta}
@@ -42,17 +95,43 @@ export default function YouTubeInput() {
               <input
                 type="url"
                 value={url}
-                onChange={(e) => { setUrl(e.target.value); reset(); }}
-                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canGenerate && handleGenerate()}
                 placeholder="https://youtube.com/watch?v=..."
                 className="flex-1 bg-transparent text-white placeholder-white/25 text-sm outline-none"
               />
               {url && (
-                <button onClick={() => { setUrl(""); reset(); }} className="text-white/20 hover:text-white/50 text-xs px-2">✕</button>
+                <button
+                  onClick={() => { handleUrlChange(""); setTxStatus("idle"); }}
+                  className="text-white/20 hover:text-white/50 text-xs px-2"
+                >✕</button>
               )}
             </div>
           </div>
         </div>
+
+        {/* Transcript status pill */}
+        {txStatus !== "idle" && (
+          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs border transition-all ${
+            txStatus === "fetching"     ? "border-white/10 bg-white/3 text-white/40" :
+            txStatus === "found"        ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" :
+            txStatus === "unavailable"  ? "border-amber-500/20 bg-amber-500/5 text-amber-400" :
+                                          "border-red-500/20 bg-red-500/5 text-red-400"
+          }`}>
+            {txStatus === "fetching" && (
+              <><span className="w-3 h-3 rounded-full border border-white/30 border-t-white/70 animate-spin flex-shrink-0" />Finding transcript…</>
+            )}
+            {txStatus === "found" && (
+              <><span className="flex-shrink-0">✓</span>Transcript found — ready to generate</>
+            )}
+            {txStatus === "unavailable" && (
+              <><span className="flex-shrink-0">⚠️</span>{txError}</>
+            )}
+            {txStatus === "error" && (
+              <><span className="flex-shrink-0">⚠️</span>{txError}</>
+            )}
+          </div>
+        )}
 
         <input
           type="text"
@@ -62,34 +141,35 @@ export default function YouTubeInput() {
           className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none transition-colors"
         />
 
+        {/* Manual transcript toggle */}
         <button
-          onClick={() => setShowTranscript(!showTranscript)}
+          onClick={() => setShowManual(!showManual)}
           className="flex items-center gap-2 text-xs text-white/35 hover:text-white/60 transition-colors"
         >
-          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] transition-colors ${(showTranscript || autoFetchFailed) ? "border-yellow-400/50 bg-yellow-400/10 text-yellow-400" : "border-white/20"}`}>
-            {(showTranscript || autoFetchFailed) ? "✓" : ""}
+          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] transition-colors ${showManual ? "border-yellow-400/50 bg-yellow-400/10 text-yellow-400" : "border-white/20"}`}>
+            {showManual ? "✓" : ""}
           </span>
-          Paste transcript manually (use if auto-fetch fails)
+          Paste transcript manually
         </button>
 
-        {(showTranscript || autoFetchFailed) && (
+        {showManual && (
           <div className="space-y-2">
-            {autoFetchFailed && (
-              <p className="text-xs text-yellow-400/70 px-1">
-                Auto-fetch failed for this video. Open YouTube, click <strong>⋯ → Show transcript</strong>, copy all the text, and paste it below.
+            {(txStatus === "unavailable" || txStatus === "error") && (
+              <p className="text-xs text-white/40 px-1 leading-relaxed">
+                On YouTube, click <strong className="text-white/60">⋯ → Show transcript</strong> under the video, then copy and paste the text below.
               </p>
             )}
             <textarea
               value={transcript}
-              onChange={(e) => { setTranscript(e.target.value); if (autoFetchFailed) reset(); }}
-              placeholder="Paste the video transcript here..."
+              onChange={(e) => setTranscript(e.target.value)}
+              placeholder="Paste the video transcript here…"
               rows={7}
               className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/25 outline-none resize-none transition-colors font-mono leading-relaxed"
             />
           </div>
         )}
 
-        {error && !autoFetchFailed && (
+        {error && (
           <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 flex items-start gap-2">
             <span className="flex-shrink-0">⚠️</span> {error}
           </div>
@@ -97,10 +177,22 @@ export default function YouTubeInput() {
 
         <button
           onClick={handleGenerate}
-          disabled={loading || !url.trim()}
+          disabled={loading || !url.trim() || txStatus === "fetching"}
           className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:bg-yellow-400/30 disabled:cursor-not-allowed text-black font-bold py-4 rounded-2xl text-sm transition-all active:scale-[0.98]"
         >
-          ✨ Generate Step-by-Step Guide
+          {txStatus === "fetching" ? (
+            <span className="flex items-center justify-center gap-3">
+              <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              Finding transcript…
+            </span>
+          ) : loading ? (
+            <span className="flex items-center justify-center gap-3">
+              <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              {statusMsg}
+            </span>
+          ) : (
+            "✨ Generate Step-by-Step Guide"
+          )}
         </button>
       </div>
     </>

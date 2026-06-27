@@ -57,9 +57,10 @@ const STAGE_ORDER: Array<Exclude<Stage, "idle" | "done" | "error">> = [
   "generating",
 ];
 
-const ACCEPTED = ".mp4,.mov,.mkv,.webm,.avi";
+const ACCEPTED = ".mp4,.mov,.mkv,.webm,.avi,.m4a,.mp3,.wav";
 const ACCEPTED_MIME = ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm", "video/avi"];
-const MAX_MB = 500;
+// Whisper API max = 25 MB; Vercel Hobby body limit = ~4.5 MB (Pro is configurable).
+const MAX_MB = 24;
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -92,7 +93,6 @@ export default function VideoUpload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
-  const [tempVideoId, setTempVideoId] = useState<string | null>(null);
 
   const ext = file?.name.split(".").pop()?.toLowerCase() ?? "";
 
@@ -151,7 +151,7 @@ export default function VideoUpload() {
     setErrorMsg("");
     setUploadProgress(0);
 
-    // Stage 1 — Upload
+    // Stage 1 — Upload file + transcribe on server (single request to /api/transcribe)
     setStage("uploading");
     simulateProgress(() => setUploadProgress(100));
 
@@ -174,20 +174,17 @@ export default function VideoUpload() {
 
       transcript = data.transcript;
       if (!resolvedTitle) resolvedTitle = data.title;
-      if (data.tempVideoId) setTempVideoId(data.tempVideoId);
     } catch {
       setErrorMsg("Upload failed — check your connection and try again.");
       setStage("error");
       return;
     }
 
-    // Stage 2 — Extracting audio (UI only in V1 — happens server-side in pipeline)
+    // Stages 2 & 3 already finished inside /api/transcribe (Whisper does audio+transcription)
     setStage("extracting-audio");
-    await delay(900);
-
-    // Stage 3 — Transcribing (UI only in V1)
+    await delay(400);
     setStage("transcribing");
-    await delay(1200);
+    await delay(400);
 
     // Stage 4 — Generating study pack via SSE stream
     setStage("generating");
@@ -246,30 +243,6 @@ export default function VideoUpload() {
         return;
       }
 
-      // Trigger screenshot extraction in background if we have a temp video
-      if (tempVideoId && guide.steps?.length) {
-        fetch("/api/screenshots", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tempVideoId,
-            steps: guide.steps.map(s => ({ id: s.id, number: s.number, totalSteps: guide!.steps.length })),
-          }),
-        })
-          .then(r => r.json())
-          .then((data: { screenshots?: Record<string, string> }) => {
-            if (data.screenshots && guide) {
-              // Merge screenshot URLs into guide steps
-              guide!.steps = guide!.steps.map(s => ({
-                ...s,
-                screenshotUrl: data.screenshots?.[s.id] ?? s.screenshotUrl,
-              }));
-              savePack(guide!);
-            }
-          })
-          .catch(() => {}); // non-fatal
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       savePack(guide as any);
       setStage("done");
@@ -284,7 +257,6 @@ export default function VideoUpload() {
     setFile(null);
     setVideoTitle("");
     setStage("idle");
-    setTempVideoId(null);
     setErrorMsg("");
     setUploadProgress(0);
   }
@@ -446,17 +418,10 @@ export default function VideoUpload() {
         </div>
       )}
 
-      {/* V1 notice */}
       {!file && (
-        <div className="bg-yellow-400/4 border border-yellow-400/10 rounded-xl px-4 py-3 flex items-start gap-3">
-          <span className="text-yellow-400/60 flex-shrink-0 text-sm mt-0.5">ℹ</span>
-          <p className="text-xs text-white/35 leading-relaxed">
-            <span className="text-yellow-400/60 font-medium">V1 — Transcription stub:</span>{" "}
-            Video upload UI is fully functional. FFmpeg audio extraction and Whisper transcription
-            are scaffolded in <code className="text-white/30">/api/transcribe/route.ts</code> and
-            ready to wire in. The same visual study pack is generated once transcription returns real text.
-          </p>
-        </div>
+        <p className="text-xs text-white/25 text-center leading-relaxed px-2">
+          Audio is transcribed automatically with OpenAI Whisper · Max 24 MB
+        </p>
       )}
 
       <button
