@@ -1,126 +1,52 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { savePack } from "@/lib/storage";
-import type { BuildGuide } from "@/lib/types/buildGuide";
+import { useGeneratePack } from "@/lib/hooks/useGeneratePack";
+import { useTranscriptionJob } from "@/lib/hooks/useTranscriptionJob";
+import GeneratingGuide from "./GeneratingGuide";
+import TranscriptCenter from "@/components/transcript/TranscriptCenter";
 
-// ── Processing pipeline stages ──────────────────────────────────────────────
-
-type Stage =
-  | "idle"
-  | "uploading"
-  | "extracting-audio"
-  | "transcribing"
-  | "generating"
-  | "done"
-  | "error";
-
-interface StageConfig {
-  label: string;
-  detail: string;
-  icon: string;
-  color: string;
-}
-
-const STAGES: Record<Exclude<Stage, "idle" | "done" | "error">, StageConfig> = {
-  uploading: {
-    label: "Uploading",
-    detail: "Sending video to server...",
-    icon: "⬆️",
-    color: "text-blue-400",
-  },
-  "extracting-audio": {
-    label: "Extracting Audio",
-    detail: "Stripping video track with FFmpeg...",
-    icon: "🎵",
-    color: "text-purple-400",
-  },
-  transcribing: {
-    label: "Transcribing",
-    detail: "Converting speech to text with Whisper...",
-    icon: "🎙️",
-    color: "text-emerald-400",
-  },
-  generating: {
-    label: "Generating Notes",
-    detail: "AI is building your visual study pack...",
-    icon: "✨",
-    color: "text-yellow-400",
-  },
-};
-
-const STAGE_ORDER: Array<Exclude<Stage, "idle" | "done" | "error">> = [
-  "uploading",
-  "extracting-audio",
-  "transcribing",
-  "generating",
-];
-
-const ACCEPTED = ".mp4,.mov,.mkv,.webm,.avi,.m4a,.mp3,.wav";
-const ACCEPTED_MIME = ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm", "video/avi"];
-// Whisper API max = 25 MB; Vercel Hobby body limit = ~4.5 MB (Pro is configurable).
-const MAX_MB = 24;
+const ACCEPTED = ".mp4,.mov,.mkv,.webm,.avi,.m4a,.mp3,.wav,.ogg,.flac";
+const MAX_MB = 500; // AssemblyAI supports up to 5 GB; Vercel Hobby body limit is ~4.5 MB
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function FileIcon({ ext }: { ext: string }) {
-  const colors: Record<string, string> = {
-    mp4: "text-blue-400",
-    mov: "text-purple-400",
-    mkv: "text-emerald-400",
-    webm: "text-orange-400",
-    avi: "text-red-400",
-  };
-  return (
-    <div className={`text-2xl font-black tracking-tighter ${colors[ext] ?? "text-white/40"}`}>
-      {ext.toUpperCase()}
-    </div>
-  );
+function ExtBadge({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const colors: Record<string, string> = { mp4: "text-blue-400", mov: "text-purple-400", mkv: "text-emerald-400", webm: "text-orange-400", mp3: "text-pink-400", wav: "text-cyan-400" };
+  return <span className={`text-2xl font-black tracking-tighter ${colors[ext] ?? "text-white/40"}`}>{ext.toUpperCase()}</span>;
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
-
 export default function VideoUpload() {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
-  const [stage, setStage] = useState<Stage>("idle");
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [errorMsg, setErrorMsg] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [fileError, setFileError] = useState("");
 
-  const ext = file?.name.split(".").pop()?.toLowerCase() ?? "";
+  const { status, statusMsg, error: genError, generate, reset: resetGen, guideMeta, streamedSteps, progress } = useGeneratePack();
+  const { status: txStatus, statusMsg: txMsg, transcript: txResult, error: txError, startJob, reset: resetJob } = useTranscriptionJob("audio-transcription");
 
-  // ── File validation ────────────────────────────────────────────────────
+  const generating = status === "generating" || status === "streaming";
+  const transcribing = txStatus === "uploading" || txStatus === "queued" || txStatus === "processing";
+
   function validateFile(f: File): string | null {
-    const validExt = /\.(mp4|mov|mkv|webm|avi)$/i.test(f.name);
-    const validMime = ACCEPTED_MIME.includes(f.type) || f.type.startsWith("video/");
-    if (!validExt && !validMime) return `Unsupported format. Please upload MP4, MOV, MKV, or WEBM.`;
-    if (f.size > MAX_MB * 1024 * 1024) return `File too large. Maximum size is ${MAX_MB} MB.`;
+    if (f.size > MAX_MB * 1024 * 1024) return `File too large (${formatBytes(f.size)}). Max is ${MAX_MB} MB.`;
     return null;
   }
 
   function pickFile(f: File) {
     const err = validateFile(f);
-    if (err) { setErrorMsg(err); return; }
-    setErrorMsg("");
+    if (err) { setFileError(err); return; }
+    setFileError("");
     setFile(f);
-    setStage("idle");
+    resetJob();
+    resetGen();
     if (!videoTitle) setVideoTitle(f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "));
   }
-
-  // ── Drag-and-drop ─────────────────────────────────────────────────────
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const onDragLeave = useCallback(() => setIsDragOver(false), []);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -130,318 +56,132 @@ export default function VideoUpload() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoTitle]);
 
-  // ── Simulated upload progress (XHR gives real progress) ───────────────
-  function simulateProgress(onDone: () => void) {
-    let pct = 0;
-    const iv = setInterval(() => {
-      pct += Math.random() * 12 + 3;
-      if (pct >= 95) {
-        clearInterval(iv);
-        setUploadProgress(95);
-        onDone();
-      } else {
-        setUploadProgress(Math.min(pct, 95));
-      }
-    }, 200);
+  async function handleTranscribe() {
+    if (!file) return;
+    await startJob(file, videoTitle || file.name);
   }
 
-  // ── Main pipeline ─────────────────────────────────────────────────────
-  async function handleProcess() {
-    if (!file) return;
-    setErrorMsg("");
-    setUploadProgress(0);
-
-    // Stage 1 — Upload file + transcribe on server (single request to /api/transcribe)
-    setStage("uploading");
-    simulateProgress(() => setUploadProgress(100));
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("title", videoTitle || file.name);
-
-    let transcript = "";
-    let resolvedTitle = videoTitle;
-
-    try {
-      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (!data.success) {
-        setErrorMsg(data.error ?? "Upload failed.");
-        setStage("error");
-        return;
-      }
-
-      transcript = data.transcript;
-      if (!resolvedTitle) resolvedTitle = data.title;
-    } catch {
-      setErrorMsg("Upload failed — check your connection and try again.");
-      setStage("error");
-      return;
-    }
-
-    // Stages 2 & 3 already finished inside /api/transcribe (Whisper does audio+transcription)
-    setStage("extracting-audio");
-    await delay(400);
-    setStage("transcribing");
-    await delay(400);
-
-    // Stage 4 — Generating study pack via SSE stream
-    setStage("generating");
-
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoUrl: `local://${file.name}`,
-          transcript,
-          videoTitle: resolvedTitle,
-        }),
-      });
-
-      if (!res.ok || !res.body) {
-        setErrorMsg("Generation failed — server error.");
-        setStage("error");
-        return;
-      }
-
-      // Consume SSE stream
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let guide: BuildGuide | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (!raw) continue;
-          try {
-            const event = JSON.parse(raw);
-            if (event.type === "error") {
-              setErrorMsg(event.error ?? "Generation failed.");
-              setStage("error");
-              return;
-            }
-            if (event.type === "complete" && event.studyPack) {
-              guide = event.studyPack as BuildGuide;
-            }
-          } catch { /* ignore malformed lines */ }
-        }
-      }
-
-      if (!guide) {
-        setErrorMsg("Guide generation returned no content. Please try again.");
-        setStage("error");
-        return;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      savePack(guide as any);
-      setStage("done");
-      router.push(`/study/${guide.id}`);
-    } catch {
-      setErrorMsg("Generation failed — please try again.");
-      setStage("error");
-    }
+  async function handleUseForGuide(text: string) {
+    await generate({ videoUrl: `local://${file?.name ?? "upload"}`, transcript: text, videoTitle, inputType: "tutorial" });
   }
 
   function reset() {
     setFile(null);
     setVideoTitle("");
-    setStage("idle");
-    setErrorMsg("");
-    setUploadProgress(0);
+    setFileError("");
+    resetJob();
+    resetGen();
   }
 
-  const isProcessing = !["idle", "done", "error"].includes(stage);
-  const currentStageIdx = STAGE_ORDER.indexOf(stage as typeof STAGE_ORDER[number]);
+  // ── Stage label for progress pill ────────────────────────────────────────
+  const txLabel =
+    txStatus === "uploading"   ? "Uploading to transcription service…" :
+    txStatus === "queued"      ? "Job queued — AssemblyAI is processing…" :
+    txStatus === "processing"  ? "Transcribing audio…" :
+    txStatus === "completed"   ? "Transcript ready ✓" :
+    txStatus === "error"       ? txError :
+    null;
 
-  // ── Render ────────────────────────────────────────────────────────────
+  const txColor =
+    txStatus === "completed"   ? "border-emerald-500/25 bg-emerald-500/6 text-emerald-400" :
+    txStatus === "error"       ? "border-red-500/20 bg-red-500/6 text-red-400" :
+                                 "border-purple-500/20 bg-purple-500/6 text-purple-400";
+
   return (
-    <div className="space-y-4">
+    <>
+      {generating && (
+        <GeneratingGuide meta={guideMeta} steps={streamedSteps} progress={progress} statusMsg={statusMsg} onCancel={resetGen} />
+      )}
 
-      {/* Drop zone */}
-      {!file ? (
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`relative cursor-pointer border-2 border-dashed rounded-2xl transition-all
-            ${isDragOver
-              ? "border-yellow-400/60 bg-yellow-400/5 scale-[1.01]"
-              : "border-white/10 hover:border-white/20 hover:bg-white/2"
-            }`}
-        >
-          <div className="flex flex-col items-center justify-center gap-4 py-14 px-6 text-center">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all
-              ${isDragOver ? "bg-yellow-400/15 scale-110" : "bg-white/4"}`}>
-              {isDragOver ? "📥" : "🎬"}
+      <div className="space-y-4">
+        {/* Drop zone */}
+        {!file ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => inputRef.current?.click()}
+            className={`cursor-pointer border-2 border-dashed rounded-2xl transition-all ${isDragOver ? "border-yellow-400/60 bg-yellow-400/5" : "border-white/10 hover:border-white/20"}`}
+          >
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 text-center">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all ${isDragOver ? "bg-yellow-400/15" : "bg-white/4"}`}>
+                {isDragOver ? "📥" : "🎬"}
+              </div>
+              <div>
+                <p className="text-white font-semibold text-sm">{isDragOver ? "Drop to upload" : "Drag & drop video or audio"}</p>
+                <p className="text-white/35 text-xs mt-1">MP4, MOV, MKV, WEBM, MP3, WAV, M4A — up to {MAX_MB} MB</p>
+              </div>
+              <p className="text-[10px] text-white/20">Transcribed with AssemblyAI · Timestamps included · High accuracy</p>
             </div>
-            <div>
-              <p className="text-white font-semibold text-sm">
-                {isDragOver ? "Drop to upload" : "Drag & drop your video here"}
-              </p>
-              <p className="text-white/35 text-xs mt-1">
-                or click to browse — MP4, MOV, MKV, WEBM up to {MAX_MB} MB
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {["MP4", "MOV", "MKV", "WEBM"].map((f) => (
-                <span key={f} className="text-[10px] font-bold bg-white/5 border border-white/10 text-white/30 px-2 py-1 rounded">
-                  {f}
-                </span>
-              ))}
-            </div>
+            <input ref={inputRef} type="file" accept={ACCEPTED} className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }} />
           </div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPTED}
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
-          />
-        </div>
-      ) : (
-        /* File selected card */
-        <div className="bg-[#161b22] border border-white/10 rounded-2xl p-5">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-xl bg-white/4 border border-white/8 flex items-center justify-center flex-shrink-0">
-              <FileIcon ext={ext} />
+        ) : (
+          /* File card */
+          <div className="bg-[#161b22] border border-white/10 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white/4 border border-white/8 flex items-center justify-center flex-shrink-0">
+              <ExtBadge name={file.name} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white truncate">{file.name}</p>
               <p className="text-xs text-white/35 mt-0.5">{formatBytes(file.size)}</p>
             </div>
-            {!isProcessing && (
-              <button
-                onClick={reset}
-                className="text-white/20 hover:text-white/60 transition-colors text-lg flex-shrink-0"
-                title="Remove file"
-              >✕</button>
+            {!transcribing && !generating && (
+              <button onClick={reset} className="text-white/20 hover:text-white/60 text-lg flex-shrink-0">✕</button>
             )}
           </div>
-
-          {/* Processing pipeline progress */}
-          {isProcessing && (
-            <div className="mt-5 space-y-3">
-              {/* Overall progress bar */}
-              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-300"
-                  style={{
-                    width: stage === "uploading"
-                      ? `${uploadProgress * 0.25}%`
-                      : stage === "extracting-audio"
-                      ? "40%"
-                      : stage === "transcribing"
-                      ? "65%"
-                      : stage === "generating"
-                      ? "85%"
-                      : "100%",
-                  }}
-                />
-              </div>
-
-              {/* Stage steps */}
-              <div className="grid grid-cols-4 gap-1 pt-1">
-                {STAGE_ORDER.map((s, i) => {
-                  const cfg = STAGES[s];
-                  const isPast = i < currentStageIdx;
-                  const isCurrent = i === currentStageIdx;
-                  return (
-                    <div key={s} className="flex flex-col items-center gap-1.5 text-center">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all
-                        ${isPast ? "bg-emerald-400/15 text-emerald-400" : ""}
-                        ${isCurrent ? "bg-yellow-400/15 text-yellow-400 ring-2 ring-yellow-400/30" : ""}
-                        ${!isPast && !isCurrent ? "bg-white/4 text-white/20" : ""}`}>
-                        {isPast ? "✓" : cfg.icon}
-                      </div>
-                      <span className={`text-[10px] font-medium leading-tight
-                        ${isPast ? "text-emerald-400/70" : ""}
-                        ${isCurrent ? "text-yellow-400" : ""}
-                        ${!isPast && !isCurrent ? "text-white/20" : ""}`}>
-                        {cfg.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Current detail */}
-              <div className="flex items-center gap-2 pt-1">
-                <span className="w-3 h-3 rounded-full bg-yellow-400/40 flex-shrink-0">
-                  <span className="block w-3 h-3 rounded-full bg-yellow-400/60 animate-ping" />
-                </span>
-                <p className="text-xs text-white/50">
-                  {stage !== "idle" && stage !== "done" && stage !== "error"
-                    ? STAGES[stage]?.detail
-                    : ""}
-                  {stage === "uploading" && uploadProgress > 0 && uploadProgress < 100
-                    ? ` (${Math.round(uploadProgress)}%)`
-                    : ""}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Title field */}
-      {file && !isProcessing && (
-        <input
-          type="text"
-          value={videoTitle}
-          onChange={(e) => setVideoTitle(e.target.value)}
-          placeholder="Video title (optional — auto-detected from filename)"
-          className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none transition-colors"
-        />
-      )}
-
-      {errorMsg && (
-        <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 flex items-start gap-2">
-          <span className="flex-shrink-0">⚠️</span>
-          <div>
-            <p>{errorMsg}</p>
-            <button onClick={reset} className="text-xs text-red-300/60 hover:text-red-300 mt-1 underline">
-              Try again
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!file && (
-        <p className="text-xs text-white/25 text-center leading-relaxed px-2">
-          Audio is transcribed automatically with OpenAI Whisper · Max 24 MB
-        </p>
-      )}
-
-      <button
-        onClick={handleProcess}
-        disabled={!file || isProcessing}
-        className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:bg-yellow-400/25 disabled:cursor-not-allowed text-black font-bold py-4 rounded-2xl text-sm transition-all active:scale-[0.98]"
-      >
-        {isProcessing ? (
-          <span className="flex items-center justify-center gap-3">
-            <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-            Processing video...
-          </span>
-        ) : (
-          `🎬 ${file ? "Process Video & Generate Study Pack" : "Select a Video First"}`
         )}
-      </button>
-    </div>
-  );
-}
 
-function delay(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
+        {/* Title */}
+        {file && !transcribing && !txResult && (
+          <input type="text" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)}
+            placeholder="Title (optional — auto-detected)" className="w-full bg-[#161b22] border border-white/10 focus:border-yellow-400/30 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 outline-none transition-colors" />
+        )}
+
+        {/* Status pill */}
+        {txLabel && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${txColor}`}>
+            {transcribing && <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin flex-shrink-0" />}
+            {txLabel}
+            {(txStatus === "queued" || txStatus === "processing") && <span className="text-current/40 ml-auto">AssemblyAI</span>}
+          </div>
+        )}
+
+        {/* Transcript center */}
+        {txResult && !generating && (
+          <TranscriptCenter
+            data={txResult}
+            onEdit={(text) => { /* transcript is immutable from hook — user edits in TranscriptCenter */ void text; }}
+            onRegenerate={() => { resetJob(); }}
+            onUseForGuide={handleUseForGuide}
+            generating={generating}
+          />
+        )}
+
+        {/* Errors */}
+        {(fileError || genError) && (
+          <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 flex items-start gap-2">
+            <span>⚠️</span>
+            <div>
+              <p>{fileError || genError}</p>
+              <button onClick={reset} className="text-xs text-red-300/50 hover:text-red-300 mt-1 underline">Start over</button>
+            </div>
+          </div>
+        )}
+
+        {/* Transcribe button */}
+        {file && !txResult && txStatus !== "error" && (
+          <button onClick={handleTranscribe} disabled={transcribing || generating}
+            className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:bg-yellow-400/25 disabled:cursor-not-allowed text-black font-bold py-4 rounded-2xl text-sm transition-all active:scale-[0.98]">
+            {transcribing ? (
+              <span className="flex items-center justify-center gap-3">
+                <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                {txMsg || "Transcribing…"}
+              </span>
+            ) : "🎙️ Transcribe & Generate Guide"}
+          </button>
+        )}
+      </div>
+    </>
+  );
 }
