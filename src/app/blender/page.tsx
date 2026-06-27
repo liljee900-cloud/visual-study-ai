@@ -4,6 +4,8 @@ import BlenderSearch from "@/components/blender/BlenderSearch";
 import TopicGenerator from "@/components/blender/TopicGenerator";
 import { BLENDER_CATEGORIES } from "@/lib/blender/categories";
 import { NODE_INDEX, NODES_BY_CATEGORY } from "@/lib/blender/nodes";
+import { SHADER_NODE_INDEX } from "@/lib/blender/shader-nodes";
+import { COMPOSITOR_NODE_INDEX } from "@/lib/blender/compositor-nodes";
 import { MODIFIER_INDEX, MODIFIERS_BY_CATEGORY } from "@/lib/blender/modifiers";
 import { EDITOR_INDEX } from "@/lib/blender/editors";
 
@@ -36,7 +38,7 @@ export default function BlenderLibraryPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-3xl sm:text-4xl font-black text-white">Blender Knowledge Library</h1>
-                <span className="text-xs bg-blue-400/10 border border-blue-400/20 text-blue-400 px-2 py-0.5 rounded-full font-medium">v4.x</span>
+                <span className="text-xs bg-blue-400/10 border border-blue-400/20 text-blue-400 px-2 py-0.5 rounded-full font-medium">v4.4</span>
               </div>
               <p className="text-white/45 mt-1">Your personal Blender textbook — searchable nodes, tools, workflows, and AI-generated lessons.</p>
             </div>
@@ -45,10 +47,12 @@ export default function BlenderLibraryPage() {
           {/* Stats */}
           <div className="flex flex-wrap gap-4 mt-6 mb-8">
             {[
-              { label: "Nodes documented", value: NODE_INDEX.length },
-              { label: "Modifiers documented", value: MODIFIER_INDEX.length },
-              { label: "Editors documented", value: EDITOR_INDEX.length },
-              { label: "Blender version", value: "4.x" },
+              { label: "Geometry Nodes", value: NODE_INDEX.length },
+              { label: "Shader Nodes", value: SHADER_NODE_INDEX.length },
+              { label: "Compositor Nodes", value: COMPOSITOR_NODE_INDEX.length },
+              { label: "Modifiers", value: MODIFIER_INDEX.length },
+              { label: "Editors", value: EDITOR_INDEX.length },
+              { label: "Blender version", value: "4.4" },
             ].map(s => (
               <div key={s.label} className="bg-white/3 border border-white/8 rounded-xl px-4 py-2.5">
                 <p className="text-lg font-black text-yellow-400">{s.value}</p>

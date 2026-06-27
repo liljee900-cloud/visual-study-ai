@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
-import ScreenshotPlaceholder from "@/components/study/ScreenshotPlaceholder";
 import Callout from "@/components/study/Callout";
-import DiagramBlock from "@/components/study/DiagramBlock";
+import NodeSVG, { WorkflowSVG } from "@/components/blender/NodeSVG";
 import { NODE_MAP, NODE_INDEX } from "@/lib/blender/nodes";
+import { SHADER_NODE_MAP, SHADER_NODE_INDEX } from "@/lib/blender/shader-nodes";
+import { COMPOSITOR_NODE_MAP, COMPOSITOR_NODE_INDEX } from "@/lib/blender/compositor-nodes";
 
 const socketTypeColors: Record<string, string> = {
   Geometry: "bg-teal-400/15 text-teal-300 border-teal-400/25",
@@ -30,12 +31,16 @@ const nodeColorAccent: Record<string, string> = {
 };
 
 export async function generateStaticParams() {
-  return NODE_INDEX.map(n => ({ id: n.id }));
+  return [
+    ...NODE_INDEX.map(n => ({ id: n.id })),
+    ...SHADER_NODE_INDEX.map(n => ({ id: n.id })),
+    ...COMPOSITOR_NODE_INDEX.map(n => ({ id: n.id })),
+  ];
 }
 
 export default async function NodeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const node = NODE_MAP[id];
+  const node = NODE_MAP[id] ?? SHADER_NODE_MAP[id] ?? COMPOSITOR_NODE_MAP[id];
   if (!node) notFound();
 
   const relatedNodes = node.relatedNodes.map(id => NODE_MAP[id]).filter(Boolean);
@@ -82,8 +87,54 @@ export default async function NodeDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {/* Screenshot */}
-        <ScreenshotPlaceholder description={node.screenshotPlaceholder} size="lg" label={node.name} />
+        {/* ── SVG Node Visual ── */}
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
+          {/* Accurate node SVG */}
+          <div className="flex-shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Node Visual</p>
+            <div className="bg-[#141414] border border-white/8 rounded-2xl p-6 flex items-center justify-center min-w-[200px]">
+              <NodeSVG
+                name={node.name}
+                category={node.category}
+                subcategory={node.subcategory}
+                inputs={node.inputs}
+                outputs={node.outputs}
+                width={240}
+              />
+            </div>
+          </div>
+
+          {/* Socket legend */}
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Socket Types</p>
+            <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 grid grid-cols-2 gap-x-4 gap-y-2">
+              {[...new Set([...node.inputs, ...node.outputs].map(s => s.type))].map(type => {
+                const colors: Record<string, string> = {
+                  Geometry: "bg-[#00d6a3]", Float: "bg-[#a1a1a1]", Integer: "bg-[#598c5c]",
+                  Boolean: "bg-[#cca6d7]", Vector: "bg-[#6363c7]", Color: "bg-[#c7c729]",
+                  Shader: "bg-[#63c763]", String: "bg-[#70b2ff]", Object: "bg-[#ed9e5c]",
+                  Collection: "bg-white", Image: "bg-[#633863]", Material: "bg-[#eb7582]",
+                  Rotation: "bg-[#e57373]", Texture: "bg-[#ab5e76]",
+                };
+                return (
+                  <div key={type} className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${colors[type] ?? "bg-white/30"}`} />
+                    <span className="text-xs text-white/50">{type}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Workflow diagram */}
+            {node.typicalConnections.length > 0 && (
+              <div className="mt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Typical Flow</p>
+                <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 overflow-x-auto">
+                  <WorkflowSVG steps={node.typicalConnections} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Quick summary grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -148,11 +199,6 @@ export default async function NodeDetailPage({ params }: { params: Promise<{ id:
             )}
           </div>
         </div>
-
-        {/* Workflow diagram */}
-        {node.typicalConnections.length > 0 && (
-          <DiagramBlock diagram={{ title: "Typical Node Connections", nodes: node.typicalConnections }} />
-        )}
 
         {/* Common use cases */}
         <div className="bg-[#161b22] border border-white/8 rounded-2xl p-5">

@@ -1,4 +1,6 @@
 import { NODE_INDEX } from "./nodes";
+import { SHADER_NODE_INDEX } from "./shader-nodes";
+import { COMPOSITOR_NODE_INDEX } from "./compositor-nodes";
 import { MODIFIER_INDEX } from "./modifiers";
 import { EDITOR_INDEX } from "./editors";
 import type { UnifiedSearchResult } from "./types";
@@ -20,7 +22,7 @@ function score(item: { name: string; description: string; tags: string[] }, q: s
 export function unifiedSearch(query: string, limit = 20): UnifiedSearchResult[] {
   if (!query.trim()) return [];
 
-  const nodes: UnifiedSearchResult[] = NODE_INDEX.map(n => ({
+  const toNode = (n: typeof NODE_INDEX[0]): UnifiedSearchResult => ({
     id: n.id,
     type: "node" as const,
     name: n.name,
@@ -30,7 +32,13 @@ export function unifiedSearch(query: string, limit = 20): UnifiedSearchResult[] 
     url: `/blender/nodes/${n.id}`,
     tags: n.tags,
     score: score(n, query),
-  }));
+  });
+
+  const nodes: UnifiedSearchResult[] = [
+    ...NODE_INDEX.map(toNode),
+    ...SHADER_NODE_INDEX.map(toNode),
+    ...COMPOSITOR_NODE_INDEX.map(toNode),
+  ];
 
   const modifiers: UnifiedSearchResult[] = MODIFIER_INDEX.map(m => ({
     id: m.id,
