@@ -3,6 +3,8 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Callout from "@/components/study/Callout";
 import { WorkflowSVG } from "@/components/blender/NodeSVG";
+import BlenderDocImage from "@/components/blender/BlenderDocImage";
+import { blenderModifierImageUrls } from "@/lib/blender/docs-urls";
 import { MODIFIER_MAP, MODIFIER_INDEX } from "@/lib/blender/modifiers";
 
 const accentMap: Record<string, string> = {
@@ -73,46 +75,58 @@ export default async function ModifierDetailPage({ params }: { params: Promise<{
           </div>
         </div>
 
-        {/* Modifier visual card */}
-        <div className={`border rounded-2xl overflow-hidden ${accent}`}>
-          {/* Header */}
-          <div className="px-5 py-3 border-b border-white/8 flex items-center gap-3">
-            <span className="text-2xl">{mod.icon}</span>
-            <div>
-              <p className="text-xs font-bold text-white/70">{mod.name}</p>
-              <p className="text-[10px] text-white/30 capitalize">{mod.category} Modifier · Blender {mod.blenderVersion}+</p>
-            </div>
+        {/* ── Visuals grid ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Official Blender docs screenshot */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Modifier Screenshot</p>
+            <BlenderDocImage
+              src={blenderModifierImageUrls(id)[0]}
+              fallbackUrls={blenderModifierImageUrls(id).slice(1)}
+              alt={`${mod.name} modifier in Blender`}
+              caption={`${mod.name} modifier panel as shown in Blender ${mod.blenderVersion}+`}
+            />
           </div>
 
-          {/* Parameters visual */}
-          {mod.parameters.length > 0 && (
-            <div className="p-5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Parameters</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {mod.parameters.map((p, i) => (
-                  <div key={i} className="flex items-start gap-2 bg-black/20 rounded-xl px-3 py-2">
-                    <span className={`text-[9px] font-bold border rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5 ${paramTypeBadge[p.type] ?? "bg-white/10 text-white/40 border-white/15"}`}>
-                      {p.type}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-white/85 truncate">{p.name}
-                        {p.default && <span className="ml-2 font-mono text-white/35 font-normal">{p.default}</span>}
-                      </p>
-                      <p className="text-[10px] text-white/40 leading-relaxed truncate">{p.description}</p>
-                    </div>
-                  </div>
-                ))}
+          {/* Parameters panel */}
+          <div className={`border rounded-2xl overflow-hidden ${accent}`}>
+            <div className="px-5 py-3 border-b border-white/8 flex items-center gap-3">
+              <span className="text-2xl">{mod.icon}</span>
+              <div>
+                <p className="text-xs font-bold text-white/70">{mod.name}</p>
+                <p className="text-[10px] text-white/30 capitalize">{mod.category} Modifier · Blender {mod.blenderVersion}+</p>
               </div>
             </div>
-          )}
-
-          {/* Workflow diagram */}
-          <div className="px-5 pb-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Typical Workflow</p>
-            <div className="bg-black/30 rounded-xl p-3 overflow-x-auto">
-              <WorkflowSVG steps={["Base Mesh", `${mod.name}`, "Result"]} />
-            </div>
+            {mod.parameters.length > 0 && (
+              <div className="p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Parameters</p>
+                <div className="space-y-2">
+                  {mod.parameters.map((p, i) => (
+                    <div key={i} className="flex items-start gap-2 bg-black/20 rounded-xl px-3 py-2">
+                      <span className={`text-[9px] font-bold border rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5 ${paramTypeBadge[p.type] ?? "bg-white/10 text-white/40 border-white/15"}`}>
+                        {p.type}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white/85">{p.name}
+                          {p.default && <span className="ml-2 font-mono text-white/35 font-normal">{p.default}</span>}
+                        </p>
+                        <p className="text-[10px] text-white/40 leading-relaxed">{p.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Workflow diagram */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Typical Workflow</p>
+          <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 overflow-x-auto">
+            <WorkflowSVG steps={["Base Mesh", mod.name, "Apply / Result"]} />
+          </div>
+          <p className="text-[10px] text-white/25 px-1 mt-1.5">↑ The modifier sits non-destructively in the modifier stack</p>
         </div>
 
         {/* Why / When */}

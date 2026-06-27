@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
-import ScreenshotPlaceholder from "@/components/study/ScreenshotPlaceholder";
 import Callout from "@/components/study/Callout";
+import EditorDiagram from "@/components/blender/EditorDiagram";
 import { EDITOR_MAP, EDITOR_INDEX } from "@/lib/blender/editors";
+import { EDITOR_IMAGE_URLS } from "@/lib/blender/docs-urls";
+import BlenderDocImage from "@/components/blender/BlenderDocImage";
 
 const accentMap: Record<string, string> = {
   yellow: "border-yellow-400/20 bg-yellow-400/5",
@@ -25,6 +27,7 @@ export default async function EditorDetailPage({ params }: { params: Promise<{ i
 
   const relatedEditors = editor.relatedEditors.map(eid => EDITOR_MAP[eid]).filter(Boolean);
   const accent = accentMap[editor.color] ?? accentMap.blue;
+  const docImageUrls = EDITOR_IMAGE_URLS[id] ?? [];
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -53,8 +56,55 @@ export default async function EditorDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
 
-        {/* Screenshot */}
-        <ScreenshotPlaceholder description={editor.screenshotPlaceholder} size="lg" label={editor.name} />
+        {/* ── Visuals row ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Interface diagram — always shows, accurate SVG layout */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Interface Layout</p>
+            <EditorDiagram
+              editorId={id}
+              editorName={editor.name}
+              editorIcon={editor.icon}
+              caption={`${editor.name} — labeled interface zones (Blender 4.4)`}
+            />
+          </div>
+
+          {/* Official Blender docs image (if available) */}
+          {docImageUrls.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Official Screenshot</p>
+              <BlenderDocImage
+                src={docImageUrls[0]}
+                fallbackUrls={docImageUrls.slice(1)}
+                alt={`${editor.name} screenshot from Blender manual`}
+                caption={`${editor.name} as shown in the official Blender 4.4 manual`}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Key areas — visual breakdown */}
+        {editor.keyAreas.length > 0 && (
+          <div className="bg-[#161b22] border border-white/8 rounded-2xl p-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Key Areas</p>
+            <div className="space-y-3">
+              {editor.keyAreas.map((area, i) => {
+                const areaColors = ["text-blue-400","text-green-400","text-orange-400","text-purple-400","text-teal-400","text-yellow-400"];
+                return (
+                  <div key={i} className="flex items-start gap-3">
+                    <span className={`text-xs font-bold border rounded px-2 py-0.5 flex-shrink-0 mt-0.5 ${areaColors[i % areaColors.length]} border-current/30 bg-current/5`}>
+                      {area.location}
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold text-white">{area.name}</p>
+                      <p className="text-xs text-white/40 leading-relaxed">{area.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* What you can do */}
         <div className="bg-[#161b22] border border-white/8 rounded-2xl p-5">
@@ -79,24 +129,6 @@ export default async function EditorDetailPage({ params }: { params: Promise<{ i
             <p className="text-sm text-white/75 leading-relaxed">{editor.advancedExplanation}</p>
           </div>
         </div>
-
-        {/* Key areas */}
-        {editor.keyAreas.length > 0 && (
-          <div className="bg-[#161b22] border border-white/8 rounded-2xl p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Key Areas</p>
-            <div className="space-y-3">
-              {editor.keyAreas.map((area, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <span className="text-xs bg-white/5 border border-white/10 text-white/40 rounded px-2 py-0.5 flex-shrink-0 mt-0.5">{area.location}</span>
-                  <div>
-                    <p className="text-xs font-semibold text-white">{area.name}</p>
-                    <p className="text-xs text-white/40 leading-relaxed">{area.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Common workflows */}
         {editor.commonWorkflows.length > 0 && (

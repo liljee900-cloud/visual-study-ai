@@ -3,9 +3,11 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Callout from "@/components/study/Callout";
 import NodeSVG, { WorkflowSVG } from "@/components/blender/NodeSVG";
+import BlenderDocImage from "@/components/blender/BlenderDocImage";
 import { NODE_MAP, NODE_INDEX } from "@/lib/blender/nodes";
 import { SHADER_NODE_MAP, SHADER_NODE_INDEX } from "@/lib/blender/shader-nodes";
 import { COMPOSITOR_NODE_MAP, COMPOSITOR_NODE_INDEX } from "@/lib/blender/compositor-nodes";
+import { blenderNodeImageUrl } from "@/lib/blender/docs-urls";
 
 const socketTypeColors: Record<string, string> = {
   Geometry: "bg-teal-400/15 text-teal-300 border-teal-400/25",
@@ -87,54 +89,78 @@ export default async function NodeDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {/* ── SVG Node Visual ── */}
-        <div className="flex flex-col sm:flex-row gap-6 items-start">
-          {/* Accurate node SVG */}
-          <div className="flex-shrink-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Node Visual</p>
-            <div className="bg-[#141414] border border-white/8 rounded-2xl p-6 flex items-center justify-center min-w-[200px]">
-              <NodeSVG
-                name={node.name}
-                category={node.category}
-                subcategory={node.subcategory}
-                inputs={node.inputs}
-                outputs={node.outputs}
-                width={240}
-              />
-            </div>
+        {/* ── Visual section ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          {/* LEFT: Official Blender docs node image (real screenshot) + SVG fallback */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25">Node Screenshot</p>
+            <BlenderDocImage
+              src={blenderNodeImageUrl(id)}
+              alt={`${node.name} node in Blender`}
+              caption={`The ${node.name} node as it appears in Blender 4.4`}
+              svgNode={{
+                name: node.name,
+                category: node.category,
+                subcategory: node.subcategory,
+                inputs: node.inputs,
+                outputs: node.outputs,
+              }}
+            />
           </div>
 
-          {/* Socket legend */}
-          <div className="flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Socket Types</p>
-            <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 grid grid-cols-2 gap-x-4 gap-y-2">
-              {[...new Set([...node.inputs, ...node.outputs].map(s => s.type))].map(type => {
-                const colors: Record<string, string> = {
-                  Geometry: "bg-[#00d6a3]", Float: "bg-[#a1a1a1]", Integer: "bg-[#598c5c]",
-                  Boolean: "bg-[#cca6d7]", Vector: "bg-[#6363c7]", Color: "bg-[#c7c729]",
-                  Shader: "bg-[#63c763]", String: "bg-[#70b2ff]", Object: "bg-[#ed9e5c]",
-                  Collection: "bg-white", Image: "bg-[#633863]", Material: "bg-[#eb7582]",
-                  Rotation: "bg-[#e57373]", Texture: "bg-[#ab5e76]",
-                };
-                return (
-                  <div key={type} className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${colors[type] ?? "bg-white/30"}`} />
-                    <span className="text-xs text-white/50">{type}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Workflow diagram */}
-            {node.typicalConnections.length > 0 && (
-              <div className="mt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Typical Flow</p>
-                <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 overflow-x-auto">
-                  <WorkflowSVG steps={node.typicalConnections} />
-                </div>
+          {/* RIGHT: Sockets + workflow */}
+          <div className="space-y-3">
+            {/* Socket type legend */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Socket Types</p>
+              <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 grid grid-cols-2 gap-x-4 gap-y-2.5">
+                {[...new Set([...node.inputs, ...node.outputs].map(s => s.type))].map(type => {
+                  const colors: Record<string, string> = {
+                    Geometry: "bg-[#00d6a3]", Float: "bg-[#a1a1a1]", Integer: "bg-[#598c5c]",
+                    Boolean: "bg-[#cca6d7]", Vector: "bg-[#6363c7]", Color: "bg-[#c7c729]",
+                    Shader: "bg-[#63c763]", String: "bg-[#70b2ff]", Object: "bg-[#ed9e5c]",
+                    Collection: "bg-white", Image: "bg-[#633863]", Material: "bg-[#eb7582]",
+                    Rotation: "bg-[#e57373]", Texture: "bg-[#ab5e76]",
+                  };
+                  return (
+                    <div key={type} className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full flex-shrink-0 ${colors[type] ?? "bg-white/30"}`} />
+                      <span className="text-xs text-white/55">{type}</span>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
+
+            {/* Node SVG diagram — always accurate */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Node Diagram</p>
+              <div className="bg-[#141414] border border-white/8 rounded-2xl p-6 flex items-center justify-center">
+                <NodeSVG
+                  name={node.name}
+                  category={node.category}
+                  subcategory={node.subcategory}
+                  inputs={node.inputs}
+                  outputs={node.outputs}
+                  width={260}
+                />
+              </div>
+              <p className="text-[10px] text-white/25 px-1 mt-1.5">↑ Accurate socket layout with Blender 4.4 colors</p>
+            </div>
           </div>
         </div>
+
+        {/* Workflow diagram */}
+        {node.typicalConnections.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Typical Node Flow</p>
+            <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 overflow-x-auto">
+              <WorkflowSVG steps={node.typicalConnections} />
+            </div>
+            <p className="text-[10px] text-white/25 px-1 mt-1.5">↑ Common way to connect this node in a node graph</p>
+          </div>
+        )}
 
         {/* Quick summary grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
